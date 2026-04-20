@@ -169,8 +169,14 @@ export const ordersApi = {
 // ── Subscriptions API ─────────────────────────────────────────────────────────
 export const subscriptionsApi = {
   getMy: () => request('/subscriptions/my'),
-  checkout: (plan) =>
-    request('/subscriptions/checkout', { method: 'POST', body: JSON.stringify({ plan }) }),
+  checkout: ({ plan, paymentMethod, phone } = {}) =>
+    request('/subscriptions/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ plan, paymentMethod, ...(phone ? { phone } : {}) }),
+    }),
+  verifyPayment: (paymentId) =>
+    request(`/subscriptions/verify-payment?paymentId=${encodeURIComponent(paymentId)}`),
+  cancel: () => request('/subscriptions/cancel', { method: 'DELETE' }),
 };
 
 // ── Admin API ─────────────────────────────────────────────────────────────────

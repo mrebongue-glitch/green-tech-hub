@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -13,6 +13,7 @@ import productRoutes from './routes/products.routes';
 import orderRoutes from './routes/orders.routes';
 import subscriptionRoutes from './routes/subscriptions.routes';
 import adminRoutes from './routes/admin.routes';
+import { handleNotchpayWebhook } from './services/notchpay.service';
 
 const app = express();
 
@@ -59,13 +60,25 @@ app.use(
 app.use(cookieParser());
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
-// Stripe webhooks nécessitent le body brut — avant express.json()
+// Les webhooks nécessitent le body brut — déclarés AVANT express.json()
 app.use('/api/v1/orders/webhook/stripe', express.raw({ type: 'application/json' }));
+app.use('/webhook/notchpay', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // ─── Global Rate Limiting ─────────────────────────────────────────────────────
 app.use('/api', apiLimiter);
+
+// ─── Webhook Notchpay (hors /api — pas de rate limiter ni d'auth JWT) ─────────
+app.post('/webhook/notchpay', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const signature = req.headers['x-notch-signature'] as string ?? '';
+    await handleNotchpayWebhook(req.body as Buffer, signature);
+    res.json({ received: true });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─── Health Check (M8 — ne pas exposer NODE_ENV) ─────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {

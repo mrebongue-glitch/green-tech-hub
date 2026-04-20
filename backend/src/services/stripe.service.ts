@@ -138,25 +138,43 @@ export async function handleWebhook(rawBody: Buffer, signature: string): Promise
     }
 
     case 'checkout.session.completed': {
-      const session = event.data.object as Stripe.CheckoutSession;
+      const session = event.data.object as Stripe.Checkout.Session;
       const { userId, plan } = session.metadata ?? {};
       if (userId && plan) {
         const now = new Date();
         const endDate = new Date(now);
         endDate.setMonth(endDate.getMonth() + 1);
+        const amountXaf = SUBSCRIPTION_PRICES[plan].xaf;
 
-        await prisma.subscription.create({
+        const subscription = await prisma.subscription.create({
           data: {
             userId,
             plan: plan as 'BASIC' | 'PREMIUM' | 'ENTERPRISE',
             status: 'ACTIVE',
+            paymentMethod: 'CARD',
             stripeSubId: session.subscription as string,
             startDate: now,
             endDate,
-            priceXaf: SUBSCRIPTION_PRICES[plan].xaf,
+            priceXaf: amountXaf,
           },
         });
-        auditLog('subscription.activated', { userId, plan });
+
+        await prisma.payment.create({
+          data: {
+            userId,
+            subscriptionId: subscription.id,
+            provider: 'STRIPE',
+            method: 'CARD',
+            amountXaf,
+            providerRef: session.id,
+            providerSubRef: session.subscription as string,
+            status: 'SUCCESS',
+            paidAt: now,
+            webhookPayload: { sessionId: session.id } as object,
+          },
+        });
+
+        auditLog('subscription.activated.stripe', { userId, plan, subscriptionId: subscription.id });
       }
       break;
     }

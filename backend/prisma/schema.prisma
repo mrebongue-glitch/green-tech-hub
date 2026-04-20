@@ -44,6 +44,25 @@ enum SubscriptionStatus {
   TRIAL
 }
 
+enum PaymentProvider {
+  STRIPE      // Visa / Mastercard
+  NOTCHPAY    // Orange Money CM, MTN Mobile Money CM, cartes locales
+}
+
+enum PaymentMethod {
+  CARD
+  ORANGE_MONEY
+  MTN_MOBILE_MONEY
+}
+
+enum PaymentTransactionStatus {
+  PENDING    // initié, en attente de confirmation (Mobile Money OTP)
+  SUCCESS    // confirmé par webhook
+  FAILED     // refusé / timeout
+  CANCELLED  // annulé par l'utilisateur
+  EXPIRED    // délai dépassé sans confirmation
+}
+
 enum StockMovementType {
   IN
   OUT
@@ -65,6 +84,7 @@ model User {
   refreshTokens     RefreshToken[]
   orders            Order[]
   subscriptions     Subscription[]
+  payments          Payment[]
   addresses         Address[]
   carbonProfiles    CarbonProfile[]
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -197,6 +217,7 @@ model Order {
   paymentStatus   PaymentStatus @default(UNPAID) @map("payment_status")
   stripePaymentId String?       @map("stripe_payment_id")
   stripeSessionId String?       @map("stripe_session_id")
+  payments        Payment[]
   totalCarbonKg   Decimal?      @map("total_carbon_kg") @db.Decimal(10, 4)
   notes           String?
   createdAt       DateTime      @default(now()) @map("created_at")
@@ -229,17 +250,60 @@ model Subscription {
   user            User               @relation(fields: [userId], references: [id])
   plan            SubscriptionPlan
   status          SubscriptionStatus @default(ACTIVE)
+  paymentMethod   PaymentMethod?     @map("payment_method")
+  // Stripe
   stripeSubId     String?            @map("stripe_sub_id")
+  // Notchpay
+  notchpayRef     String?            @map("notchpay_ref")
   startDate       DateTime           @map("start_date")
   endDate         DateTime?          @map("end_date")
   cancelledAt     DateTime?          @map("cancelled_at")
   priceXaf        Decimal            @map("price_xaf") @db.Decimal(12, 2)
+  payments        Payment[]
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([status])
   @@map("subscriptions")
+}
+
+model Payment {
+  id              String                   @id @default(uuid())
+  userId          String                   @map("user_id")
+  user            User                     @relation(fields: [userId], references: [id])
+  subscriptionId  String?                  @map("subscription_id")
+  subscription    Subscription?            @relation(fields: [subscriptionId], references: [id])
+  orderId         String?                  @map("order_id")
+  order           Order?                   @relation(fields: [orderId], references: [id])
+
+  provider        PaymentProvider
+  method          PaymentMethod
+  amountXaf       Decimal                  @map("amount_xaf") @db.Decimal(12, 2)
+  currency        String                   @default("XAF")
+
+  // Référence unique retournée par le provider (Notchpay trx ref / Stripe session ID)
+  providerRef     String?                  @unique @map("provider_ref")
+  // ID abonnement chez le provider (Stripe sub ID / Notchpay subscription ref)
+  providerSubRef  String?                  @map("provider_sub_ref")
+
+  // Mobile Money — jamais le numéro complet, seulement un hint pour affichage
+  phoneHint       String?                  @map("phone_hint") // ex: "****1234"
+
+  status          PaymentTransactionStatus @default(PENDING)
+  failureReason   String?                  @map("failure_reason")
+  webhookPayload  Json?                    @map("webhook_payload") // snapshot brut pour audit
+
+  paidAt          DateTime?                @map("paid_at")
+  expiresAt       DateTime?                @map("expires_at") // timeout Mobile Money (ex: +10 min)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
 }
 
 model CarbonProfile {

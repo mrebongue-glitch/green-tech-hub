@@ -12,6 +12,7 @@ import { CartProvider } from '@/lib/CartContext';
 import { lazy, Suspense } from 'react';
 
 import AppLayout from '@/components/layout/AppLayout';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const Home         = lazy(() => import('@/pages/Home'));
 const Catalog      = lazy(() => import('@/pages/Catalog'));
@@ -59,7 +60,7 @@ const AuthenticatedApp = () => {
           <Route path="/product/:id" element={<ProductDetail />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/orders" element={<Orders />} />
-          <Route path="/subscription" element={<Subscription />} />
+          <Route path="/subscription" element={<ErrorBoundary><Subscription /></ErrorBoundary>} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Route>
         <Route path="*" element={<PageNotFound />} />

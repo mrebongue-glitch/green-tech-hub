@@ -31,4 +31,18 @@ export const passwordResetLimiter = createLimiter(
   'Too many password reset attempts. Please try again in 1 hour.'
 );
 
+// Strict limiter for checkout / payment initialization (anti-abuse, anti-enumeration)
+export const checkoutLimiter = createLimiter(
+  60 * 60 * 1000, // 1 hour
+  5,
+  'Too many payment attempts. Please try again in 1 hour.'
+);
+
+// Strict limiter for Notchpay payment status polling
+export const verifyPaymentLimiter = createLimiter(
+  60 * 1000, // 1 minute
+  30,
+  'Too many polling requests. Please slow down.'
+);
+
 // Stripe webhook: no rate limit (Stripe has its own retry logic)

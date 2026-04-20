@@ -16,6 +16,13 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_'),
 
+  // Notchpay — agrégateur Mobile Money Cameroun (Orange Money, MTN MoMo)
+  NOTCHPAY_PUBLIC_KEY: z.string().startsWith('pk_').optional(),
+  NOTCHPAY_HASH_KEY: z.string().min(16).optional(),
+
+  // URL publique de ce backend (callback Notchpay webhook)
+  BACKEND_URL: z.string().url().default('http://localhost:4000'),
+
   // CORS: comma-separated list of allowed origins
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 
