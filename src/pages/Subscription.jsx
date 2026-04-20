@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 import { subscriptionsApi } from '@/api/customBackendClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLanguage } from '@/lib/LanguageContext';
@@ -14,6 +16,10 @@ import {
   ArrowLeft, Loader2, CheckCircle2, XCircle, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import StripeCardForm from '@/components/payment/StripeCardForm';
+
+// Chargé une seule fois au niveau module (évite de recréer à chaque render)
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? '');
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -88,13 +94,14 @@ export default function Subscription() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // UI state machine
-  const [step, setStep] = useState('plans'); // 'plans' | 'payment' | 'polling' | 'success' | 'error'
+  const [step, setStep] = useState('plans'); // 'plans' | 'payment' | 'card-form' | 'polling' | 'success' | 'error'
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('ORANGE_MONEY');
   const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [clientSecret, setClientSecret] = useState(null);
 
   const pollCount = useRef(0);
   const pollTimer = useRef(null);
@@ -195,10 +202,17 @@ export default function Subscription() {
       return subscriptionsApi.checkout({ plan: selectedPlan, paymentMethod });
     },
     onSuccess: (res) => {
-      const { checkoutUrl, paymentId } = res?.data ?? {};
-      if (paymentId) {
-        sessionStorage.setItem(SESSION_KEY, paymentId);
+      const { checkoutUrl, clientSecret: cs, paymentId, provider } = res?.data ?? {};
+
+      // Stripe Elements — formulaire embarqué, pas de redirection
+      if (provider === 'STRIPE' && cs) {
+        setClientSecret(cs);
+        setStep('card-form');
+        return;
       }
+
+      // Notchpay — redirection vers page de paiement Mobile Money
+      if (paymentId) sessionStorage.setItem(SESSION_KEY, paymentId);
       if (checkoutUrl) {
         setIsRedirecting(true);
         window.location.href = checkoutUrl;
@@ -288,6 +302,54 @@ export default function Subscription() {
         <Button variant="outline" onClick={() => { setStep('plans'); setSelectedPlan(null); }}>
           <ArrowLeft className="w-4 h-4 mr-2" />{t('back_to_plans')}
         </Button>
+      </div>
+    );
+  }
+
+  // ── Step: carte bancaire (Stripe Elements) ───────────────────────────────────
+
+  if (step === 'card-form' && clientSecret) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-10">
+        <button
+          onClick={() => { setStep('payment'); setClientSecret(null); }}
+          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> {t('back_to_plans')}
+        </button>
+
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-primary" />
+              {lang === 'fr' ? 'Paiement par carte' : 'Card payment'}
+            </CardTitle>
+            {selectedPlanData && (
+              <div className="flex items-center justify-between mt-2 py-3 px-4 bg-muted rounded-lg">
+                <span className="font-medium capitalize">
+                  {t(selectedPlan.toLowerCase())} Plan
+                </span>
+                <span className="font-bold text-primary">
+                  {formatPrice(selectedPlanData.price)} XAF{' '}
+                  <span className="text-xs font-normal text-muted-foreground">{t('per_month')}</span>
+                </span>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            <Elements stripe={stripePromise} options={{ clientSecret, locale: lang === 'fr' ? 'fr' : 'en' }}>
+              <StripeCardForm
+                clientSecret={clientSecret}
+                amount={selectedPlanData?.price ?? 0}
+                onSuccess={() => {
+                  queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
+                  setStep('success');
+                }}
+                onError={(msg) => toast.error(msg)}
+              />
+            </Elements>
+          </CardContent>
+        </Card>
       </div>
     );
   }

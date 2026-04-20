@@ -55,6 +55,39 @@ export async function createCheckoutSession(
   return session.url!;
 }
 
+// Subscription payment via Stripe Elements (formulaire embarqué — pas de redirection)
+export async function createSubscriptionPaymentIntent(
+  userId: string,
+  plan: 'BASIC' | 'PREMIUM' | 'ENTERPRISE'
+): Promise<{ clientSecret: string }> {
+  const planConfig = SUBSCRIPTION_PRICES[plan];
+  if (!planConfig) throw new AppError(400, 'Invalid plan');
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError(404, 'User not found');
+
+  const paymentIntent = await stripe.paymentIntents.create(
+    {
+      amount: planConfig.xaf,
+      currency: 'xaf',
+      receipt_email: user.email,
+      // M2 — type 'subscription' pour différencier dans le webhook
+      metadata: { userId, plan, type: 'subscription' },
+      description: `Green Market ${plan} Plan — Abonnement mensuel`,
+    },
+    // M2 — même PaymentIntent si retry dans le même mois
+    { idempotencyKey: `sub_elements_${userId}_${plan}_${new Date().toISOString().slice(0, 7)}` }
+  );
+
+  auditLog('stripe.subscription_payment_intent.created', {
+    userId,
+    plan,
+    paymentIntentId: paymentIntent.id,
+  });
+
+  return { clientSecret: paymentIntent.client_secret! };
+}
+
 export async function createPaymentIntent(
   orderId: string,
   requestingUserId: string // C4 — ownership obligatoire
@@ -121,19 +154,70 @@ export async function handleWebhook(rawBody: Buffer, signature: string): Promise
   switch (event.type) {
     case 'payment_intent.succeeded': {
       const pi = event.data.object as Stripe.PaymentIntent;
-      await prisma.order.updateMany({
-        where: { stripePaymentId: pi.id },
-        data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
-      });
+
+      if (pi.metadata?.type === 'subscription') {
+        // Paiement d'abonnement via Stripe Elements
+        const { userId, plan } = pi.metadata;
+        if (userId && plan) {
+          // M2 — idempotence : ne pas créer deux fois si webhook rejoué
+          const existing = await prisma.payment.findUnique({ where: { providerRef: pi.id } });
+          if (!existing) {
+            const now = new Date();
+            const endDate = new Date(now);
+            endDate.setMonth(endDate.getMonth() + 1);
+            const amountXaf = SUBSCRIPTION_PRICES[plan]?.xaf ?? 0;
+
+            const subscription = await prisma.subscription.create({
+              data: {
+                userId,
+                plan: plan as 'BASIC' | 'PREMIUM' | 'ENTERPRISE',
+                status: 'ACTIVE',
+                paymentMethod: 'CARD',
+                startDate: now,
+                endDate,
+                priceXaf: amountXaf,
+              },
+            });
+
+            await prisma.payment.create({
+              data: {
+                userId,
+                subscriptionId: subscription.id,
+                provider: 'STRIPE',
+                method: 'CARD',
+                amountXaf,
+                providerRef: pi.id,
+                status: 'SUCCESS',
+                paidAt: now,
+                webhookPayload: { paymentIntentId: pi.id } as object,
+              },
+            });
+
+            auditLog('subscription.activated.stripe.elements', {
+              userId,
+              plan,
+              subscriptionId: subscription.id,
+            });
+          }
+        }
+      } else {
+        // Paiement de commande classique
+        await prisma.order.updateMany({
+          where: { stripePaymentId: pi.id },
+          data: { paymentStatus: 'PAID', status: 'CONFIRMED' },
+        });
+      }
       break;
     }
 
     case 'payment_intent.payment_failed': {
       const pi = event.data.object as Stripe.PaymentIntent;
-      await prisma.order.updateMany({
-        where: { stripePaymentId: pi.id },
-        data: { paymentStatus: 'FAILED' },
-      });
+      if (!pi.metadata?.type) {
+        await prisma.order.updateMany({
+          where: { stripePaymentId: pi.id },
+          data: { paymentStatus: 'FAILED' },
+        });
+      }
       break;
     }
 

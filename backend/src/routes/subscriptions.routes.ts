@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma';
 import { authenticate } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { checkoutLimiter, verifyPaymentLimiter } from '../middleware/rateLimiter.middleware';
-import { createCheckoutSession } from '../services/stripe.service';
+import { createSubscriptionPaymentIntent } from '../services/stripe.service';
 import { initializeNotchpayPayment, verifyNotchpayPayment } from '../services/notchpay.service';
 import { AppError } from '../middleware/errorHandler.middleware';
 import { auditLog, securityLog } from '../config/logger';
@@ -78,14 +78,15 @@ router.post(
         data: { status: 'EXPIRED' },
       });
 
+      if (paymentMethod === 'CARD') {
+        // Stripe Elements — formulaire embarqué, pas de redirection
+        const { clientSecret } = await createSubscriptionPaymentIntent(req.user!.sub, plan);
+        return res.json({ success: true, data: { clientSecret, provider: 'STRIPE' } });
+      }
+
       const origin = env.BASE44_FRONTEND_URL ?? env.CORS_ORIGINS.split(',')[0].trim();
       const successUrl = `${origin}/#/subscription?success=true`;
       const cancelUrl  = `${origin}/#/subscription?cancelled=true`;
-
-      if (paymentMethod === 'CARD') {
-        const url = await createCheckoutSession(req.user!.sub, plan, successUrl, cancelUrl);
-        return res.json({ success: true, data: { checkoutUrl: url, provider: 'STRIPE' } });
-      }
 
       const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
       if (!user) throw new AppError(404, 'Utilisateur introuvable');
