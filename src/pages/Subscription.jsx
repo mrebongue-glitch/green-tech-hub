@@ -83,7 +83,7 @@ const paymentMethods = [
 
 export default function Subscription() {
   const { t, lang } = useLanguage();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useAuth(); // isAuthenticated: guard query; user: email display
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -105,6 +105,7 @@ export default function Subscription() {
     queryKey: ['my-subscription'],
     queryFn: () => subscriptionsApi.getMy(),
     enabled: isAuthenticated,
+    retry: false,
   });
   const activeSub = subRes?.data;
 
@@ -510,10 +511,6 @@ export default function Subscription() {
                   }`}
                   disabled={isCurrentPlan || subLoading}
                   onClick={() => {
-                    if (!isAuthenticated) {
-                      toast.error(lang === 'fr' ? 'Connectez-vous pour vous abonner' : 'Please log in to subscribe');
-                      return;
-                    }
                     setSelectedPlan(plan.key);
                     setPaymentMethod('ORANGE_MONEY');
                     setPhone('');
