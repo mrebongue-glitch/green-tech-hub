@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(chmod +x /Applications/MAMP/htdocs/green-tech-hub/scripts/check-base44.sh)",
+      "Bash(bash /Applications/MAMP/htdocs/green-tech-hub/scripts/check-base44.sh)",
+      "Bash(npm run *)"
+    ]
+  }
+}
