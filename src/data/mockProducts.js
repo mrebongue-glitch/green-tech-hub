@@ -64,7 +64,7 @@ export const mockProducts = [
     descriptionEn: 'Portable 1TB external SSD, USB 3.2 Gen 2, 1000MB/s speed, rugged and compact.',
     price: 38000,
     currency: 'XAF',
-    imageUrl: 'https://images.unsplash.com/photo-1607252650355-f7fd0460ccdb?w=600&q=80',
+    imageUrl: `${import.meta.env.BASE_URL}images/products/sandisk-ssd.jpg`,
     category: { slug: 'informatique' },
     stock: { quantity: 12 },
     ecoScore: 78,
