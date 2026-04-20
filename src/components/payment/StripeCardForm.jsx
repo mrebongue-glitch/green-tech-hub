@@ -6,9 +6,10 @@ import {
   CardExpiryElement,
   CardCvcElement,
 } from '@stripe/react-stripe-js';
+import { subscriptionsApi } from '@/api/customBackendClient';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Loader2, ShieldCheck, CreditCard } from 'lucide-react';
+import { Loader2, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/lib/LanguageContext';
 
 const ELEMENT_STYLE = {
@@ -22,9 +23,7 @@ const ELEMENT_STYLE = {
   invalid: { color: '#ef4444', iconColor: '#ef4444' },
 };
 
-const BRANDS = ['visa', 'mastercard'];
-
-export default function StripeCardForm({ clientSecret, amount, onSuccess, onError }) {
+export default function StripeCardForm({ plan, amount, onSuccess, onError }) {
   const stripe = useStripe();
   const elements = useElements();
   const { lang } = useLanguage();
@@ -43,19 +42,27 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
     setLoading(true);
     setFieldErrors({});
 
-    const cardNumber = elements.getElement(CardNumberElement);
+    try {
+      // 1. Obtenir le clientSecret depuis notre backend
+      const res = await subscriptionsApi.checkout({ plan, paymentMethod: 'CARD' });
+      const clientSecret = res?.data?.clientSecret;
+      if (!clientSecret) throw new Error(lang === 'fr' ? 'Erreur serveur — réessayez' : 'Server error — please retry');
 
-    const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: { card: cardNumber },
-    });
+      // 2. Confirmer le paiement avec Stripe (3DS géré automatiquement)
+      const cardNumber = elements.getElement(CardNumberElement);
+      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: { card: cardNumber },
+      });
 
-    setLoading(false);
-
-    if (error) {
-      // Stripe localise déjà le message (FR si navigator.language=fr)
-      onError(error.message ?? (lang === 'fr' ? 'Paiement refusé' : 'Payment declined'));
-    } else if (paymentIntent?.status === 'succeeded') {
-      onSuccess();
+      if (error) {
+        onError(error.message ?? (lang === 'fr' ? 'Paiement refusé' : 'Payment declined'));
+      } else if (paymentIntent?.status === 'succeeded') {
+        onSuccess();
+      }
+    } catch (err) {
+      onError(err.message ?? (lang === 'fr' ? 'Erreur lors du paiement' : 'Payment error'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -64,12 +71,12 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Brand indicators */}
+      {/* Brand badges — s'activent automatiquement selon le numéro saisi */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground mr-1">
           {lang === 'fr' ? 'Accepté :' : 'Accepted:'}
         </span>
-        {BRANDS.map((b) => (
+        {['visa', 'mastercard'].map((b) => (
           <span
             key={b}
             className={`px-3 py-1 rounded-md border text-xs font-bold uppercase transition-all ${
@@ -83,19 +90,16 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
             {b === 'mastercard' ? 'Mastercard' : 'Visa'}
           </span>
         ))}
-        {brand && !BRANDS.includes(brand) && (
+        {brand && brand !== 'visa' && brand !== 'mastercard' && (
           <span className="px-3 py-1 rounded-md border border-border text-xs font-bold uppercase text-foreground">
             {brand}
           </span>
         )}
       </div>
 
-      {/* Card number */}
+      {/* Numéro de carte */}
       <div className="space-y-1.5">
-        <Label className="flex items-center gap-1.5">
-          <CreditCard className="w-3.5 h-3.5" />
-          {lang === 'fr' ? 'Numéro de carte' : 'Card number'}
-        </Label>
+        <Label>{lang === 'fr' ? 'Numéro de carte' : 'Card number'}</Label>
         <div className={fieldClass}>
           <CardNumberElement
             options={{ style: ELEMENT_STYLE, showIcon: true }}
@@ -105,12 +109,10 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
             }}
           />
         </div>
-        {fieldErrors.number && (
-          <p className="text-xs text-red-500">{fieldErrors.number}</p>
-        )}
+        {fieldErrors.number && <p className="text-xs text-red-500">{fieldErrors.number}</p>}
       </div>
 
-      {/* Expiry + CVC */}
+      {/* Date d'expiration + CVV */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>{lang === 'fr' ? "Date d'expiration" : 'Expiry date'}</Label>
@@ -120,9 +122,7 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
               onChange={(e) => setFieldError('expiry', e.error?.message)}
             />
           </div>
-          {fieldErrors.expiry && (
-            <p className="text-xs text-red-500">{fieldErrors.expiry}</p>
-          )}
+          {fieldErrors.expiry && <p className="text-xs text-red-500">{fieldErrors.expiry}</p>}
         </div>
         <div className="space-y-1.5">
           <Label>CVV / CVC</Label>
@@ -132,13 +132,11 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
               onChange={(e) => setFieldError('cvc', e.error?.message)}
             />
           </div>
-          {fieldErrors.cvc && (
-            <p className="text-xs text-red-500">{fieldErrors.cvc}</p>
-          )}
+          {fieldErrors.cvc && <p className="text-xs text-red-500">{fieldErrors.cvc}</p>}
         </div>
       </div>
 
-      {/* Security notice */}
+      {/* Mention sécurité */}
       <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg">
         <ShieldCheck className="w-3.5 h-3.5 text-green-500 mt-0.5 shrink-0" />
         {lang === 'fr'
@@ -152,8 +150,7 @@ export default function StripeCardForm({ clientSecret, amount, onSuccess, onErro
         disabled={loading || !stripe || !elements}
       >
         {loading ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          <><Loader2 className="w-4 h-4 mr-2 animate-spin" />
             {lang === 'fr' ? 'Traitement...' : 'Processing...'}
           </>
         ) : (

@@ -306,57 +306,11 @@ export default function Subscription() {
     );
   }
 
-  // ── Step: carte bancaire (Stripe Elements) ───────────────────────────────────
-
-  if (step === 'card-form' && clientSecret) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-10">
-        <button
-          onClick={() => { setStep('payment'); setClientSecret(null); }}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> {t('back_to_plans')}
-        </button>
-
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-primary" />
-              {lang === 'fr' ? 'Paiement par carte' : 'Card payment'}
-            </CardTitle>
-            {selectedPlanData && (
-              <div className="flex items-center justify-between mt-2 py-3 px-4 bg-muted rounded-lg">
-                <span className="font-medium capitalize">
-                  {t(selectedPlan.toLowerCase())} Plan
-                </span>
-                <span className="font-bold text-primary">
-                  {formatPrice(selectedPlanData.price)} XAF{' '}
-                  <span className="text-xs font-normal text-muted-foreground">{t('per_month')}</span>
-                </span>
-              </div>
-            )}
-          </CardHeader>
-          <CardContent>
-            <Elements stripe={stripePromise} options={{ clientSecret, locale: lang === 'fr' ? 'fr' : 'en' }}>
-              <StripeCardForm
-                clientSecret={clientSecret}
-                amount={selectedPlanData?.price ?? 0}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
-                  setStep('success');
-                }}
-                onError={(msg) => toast.error(msg)}
-              />
-            </Elements>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   // ── Step: payment form ────────────────────────────────────────────────────
 
   if (step === 'payment') {
+    const isCard = paymentMethod === 'CARD';
+
     return (
       <div className="max-w-lg mx-auto px-4 py-10">
         <button
@@ -383,7 +337,7 @@ export default function Subscription() {
           </CardHeader>
 
           <CardContent className="space-y-4">
-            {/* Payment method selector */}
+            {/* Sélecteur de méthode */}
             <div className="space-y-2">
               {paymentMethods.map((method) => {
                 const isActive = paymentMethod === method.key;
@@ -407,8 +361,25 @@ export default function Subscription() {
               })}
             </div>
 
-            {/* Phone input for Mobile Money */}
-            {paymentMethods.find(m => m.key === paymentMethod)?.needsPhone && (
+            {/* Formulaire carte — affiché immédiatement quand CARD est sélectionné */}
+            {isCard && (
+              <div className="pt-2 border-t">
+                <Elements stripe={stripePromise}>
+                  <StripeCardForm
+                    plan={selectedPlan}
+                    amount={selectedPlanData?.price ?? 0}
+                    onSuccess={() => {
+                      queryClient.invalidateQueries({ queryKey: ['my-subscription'] });
+                      setStep('success');
+                    }}
+                    onError={(msg) => toast.error(msg)}
+                  />
+                </Elements>
+              </div>
+            )}
+
+            {/* Champ téléphone pour Mobile Money */}
+            {!isCard && paymentMethods.find(m => m.key === paymentMethod)?.needsPhone && (
               <div className="space-y-1">
                 <Label htmlFor="phone">{t('phone_number')}</Label>
                 <Input
@@ -429,29 +400,31 @@ export default function Subscription() {
               </div>
             )}
 
-            {/* User email recap */}
-            {user?.email && (
-              <p className="text-xs text-muted-foreground">
-                {lang === 'fr' ? 'Confirmation envoyée à' : 'Confirmation sent to'}{' '}
-                <span className="font-medium text-foreground">{user.email}</span>
-              </p>
+            {/* Email recap + bouton submit pour Mobile Money uniquement */}
+            {!isCard && (
+              <>
+                {user?.email && (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === 'fr' ? 'Confirmation envoyée à' : 'Confirmation sent to'}{' '}
+                    <span className="font-medium text-foreground">{user.email}</span>
+                  </p>
+                )}
+                <Button
+                  className="w-full h-12 text-base"
+                  disabled={checkoutMutation.isPending || isRedirecting}
+                  onClick={() => checkoutMutation.mutate()}
+                >
+                  {checkoutMutation.isPending || isRedirecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {isRedirecting ? t('redirecting_payment') : t('processing_payment')}
+                    </>
+                  ) : (
+                    t('confirm_payment')
+                  )}
+                </Button>
+              </>
             )}
-
-            {/* Submit */}
-            <Button
-              className="w-full h-12 text-base"
-              disabled={checkoutMutation.isPending || isRedirecting}
-              onClick={() => checkoutMutation.mutate()}
-            >
-              {checkoutMutation.isPending || isRedirecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {isRedirecting ? t('redirecting_payment') : t('processing_payment')}
-                </>
-              ) : (
-                t('confirm_payment')
-              )}
-            </Button>
           </CardContent>
         </Card>
       </div>
