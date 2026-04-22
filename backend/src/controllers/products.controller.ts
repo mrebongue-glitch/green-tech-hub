@@ -13,14 +13,14 @@ export const listProducts = async (
 ): Promise<void> => {
   try {
     const q = req.query as unknown as ProductQuery;
-    const page = q.page ?? 1;
-    const limit = q.limit ?? 20;
+    const page = Number(q.page ?? 1);
+    const limit = Number(q.limit ?? 20);
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {
       ...(q.isActive !== undefined && { isActive: q.isActive }),
       ...(q.categoryId && { categoryId: q.categoryId }),
-      ...(q.minEcoScore !== undefined && { ecoScore: { gte: q.minEcoScore } }),
+      ...(q.minEcoScore !== undefined && { ecoScore: { gte: Number(q.minEcoScore) } }),
       ...(q.minPrice !== undefined || q.maxPrice !== undefined
         ? {
             price: {
@@ -31,8 +31,8 @@ export const listProducts = async (
         : {}),
       ...(q.search && {
         OR: [
-          { nameEn: { contains: q.search, mode: 'insensitive' } },
-          { nameFr: { contains: q.search, mode: 'insensitive' } },
+          { nameEn: { contains: q.search } },
+          { nameFr: { contains: q.search } },
         ],
       }),
     };

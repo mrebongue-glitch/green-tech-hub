@@ -101,4 +101,49 @@ router.get('/users', async (req: AuthRequest, res: Response, next: NextFunction)
   }
 });
 
+// POST /admin/grant-subscription — crée un abonnement test sans paiement (dev uniquement)
+router.post('/grant-subscription', async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { userId, plan = 'PREMIUM' } = req.body as { userId?: string; plan?: string };
+    const targetId = userId ?? req.user!.sub;
+
+    const validPlans = ['BASIC', 'PREMIUM', 'ENTERPRISE'];
+    if (!validPlans.includes(plan)) {
+      res.status(400).json({ success: false, message: 'Plan invalide' });
+      return;
+    }
+
+    // Annuler abonnements actifs existants
+    await prisma.subscription.updateMany({
+      where: { userId: targetId, status: 'ACTIVE' },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+
+    const priceMap: Record<string, number> = { BASIC: 5000, PREMIUM: 15000, ENTERPRISE: 50000 };
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setMonth(endDate.getMonth() + 1);
+
+    const subscription = await prisma.subscription.create({
+      data: {
+        userId: targetId,
+        plan: plan as 'BASIC' | 'PREMIUM' | 'ENTERPRISE',
+        status: 'ACTIVE',
+        paymentMethod: 'CARD',
+        startDate: now,
+        endDate,
+        priceXaf: priceMap[plan],
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Abonnement ${plan} activé (test)`,
+      data: subscription,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

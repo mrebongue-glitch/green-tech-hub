@@ -34,7 +34,7 @@ const checkoutSchema = z.object({
 router.get('/my', async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const sub = await prisma.subscription.findFirst({
-      where: { userId: req.user!.sub, status: 'ACTIVE' },
+      where: { userId: req.user!.sub },
       orderBy: { createdAt: 'desc' },
     });
     res.json({ success: true, data: sub });

@@ -4,7 +4,8 @@
       "Bash(npx tsc *)",
       "Bash(npx prisma *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(brew --version)"
     ]
   }
 }

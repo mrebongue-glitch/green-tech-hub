@@ -8,8 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import {
   ShoppingCart, Menu, Globe, Home, Package, FileText,
-  LayoutDashboard, CreditCard, LogOut, Leaf
+  LayoutDashboard, CreditCard, LogOut, Leaf, LogIn,
 } from 'lucide-react';
+import LoginModal from '@/components/auth/LoginModal';
 
 const navLinks = [
   { key: 'home',         path: '/',            icon: Home },
@@ -21,9 +22,10 @@ const navLinks = [
 export default function Navbar() {
   const { t, lang, toggleLang } = useLanguage();
   const { totalItems } = useCart();
-  const { user, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   const isActive = (path) => location.pathname === path;
 
@@ -93,9 +95,14 @@ export default function Navbar() {
               </Button>
             </Link>
 
-            {user && (
-              <Button variant="ghost" size="icon" onClick={() => logout()}>
+            {isAuthenticated ? (
+              <Button variant="ghost" size="icon" onClick={() => logout()} title={t('logout')}>
                 <LogOut className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setLoginOpen(true)}>
+                <LogIn className="w-4 h-4" />
+                <span className="hidden sm:inline">{t('login')}</span>
               </Button>
             )}
 
@@ -117,11 +124,17 @@ export default function Navbar() {
                   </div>
                 </div>
                 <NavLinks mobile />
+                {!isAuthenticated && (
+                  <Button variant="outline" className="w-full mt-4 gap-2" onClick={() => { setLoginOpen(true); setOpen(false); }}>
+                    <LogIn className="w-4 h-4" /> {t('login')}
+                  </Button>
+                )}
               </SheetContent>
             </Sheet>
           </div>
         </div>
       </div>
+      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
     </header>
   );
 }

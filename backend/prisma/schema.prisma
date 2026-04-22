@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -73,7 +73,7 @@ enum StockMovementType {
 model User {
   id                String    @id @default(uuid())
   email             String    @unique
-  passwordHash      String    @map("password_hash")
+  passwordHash      String    @map("password_hash") @db.VarChar(512)
   fullName          String    @map("full_name")
   phone             String?
   role              UserRole  @default(CUSTOMER)
@@ -95,7 +95,7 @@ model User {
 
 model RefreshToken {
   id        String   @id @default(uuid())
-  token     String   @unique
+  token     String   @unique @db.VarChar(512)
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime @map("expires_at")
@@ -155,13 +155,13 @@ model Product {
   categoryId        String    @map("category_id")
   category          Category  @relation(fields: [categoryId], references: [id])
   imageUrl          String?   @map("image_url")
-  imageUrls         String[]  @map("image_urls")
+  imageUrls         Json      @default("[]") @map("image_urls")
   isActive          Boolean   @default(true) @map("is_active")
   ecoScore          Int       @default(0) @map("eco_score") // 0-100
   carbonKgPerUnit   Decimal?  @map("carbon_kg_per_unit") @db.Decimal(8, 4)
   recycledContent   Int?      @map("recycled_content") // percentage
   energyEfficiency  String?   @map("energy_efficiency") // A+, A, B, etc.
-  certifications    String[]  // ISO 14001, Energy Star, etc.
+  certifications    Json      @default("[]") // ISO 14001, Energy Star, etc.
   weight            Decimal?  @db.Decimal(8, 3) // kg
   stock             Stock?
   orderItems        OrderItem[]

@@ -13,10 +13,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Check, Star, Zap, Crown, CreditCard, Smartphone,
-  ArrowLeft, Loader2, CheckCircle2, XCircle, AlertCircle,
+  ArrowLeft, Loader2, CheckCircle2, XCircle, AlertCircle, LogIn,
+  RefreshCw, LayoutGrid, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import StripeCardForm from '@/components/payment/StripeCardForm';
+import LoginModal from '@/components/auth/LoginModal';
 
 // Chargé une seule fois au niveau module (évite de recréer à chaque render)
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? '');
@@ -94,7 +96,8 @@ export default function Subscription() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // UI state machine
-  const [step, setStep] = useState('plans'); // 'plans' | 'payment' | 'card-form' | 'polling' | 'success' | 'error'
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [step, setStep] = useState('plans'); // 'plans' | 'payment' | 'polling' | 'success' | 'error'
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('ORANGE_MONEY');
   const [phone, setPhone] = useState('');
@@ -105,6 +108,7 @@ export default function Subscription() {
 
   const pollCount = useRef(0);
   const pollTimer = useRef(null);
+  const plansRef = useRef(null);
 
   // ── Current subscription ──────────────────────────────────────────────────
 
@@ -445,8 +449,8 @@ export default function Subscription() {
         <div className="w-16 h-1 bg-primary rounded-full mx-auto mt-4" />
       </div>
 
-      {/* Active subscription banner */}
-      {activeSub && (
+      {/* ── Bannière abonnement ACTIF ── */}
+      {activeSub?.status === 'ACTIVE' && (
         <Card className="mb-8 border-primary/30 bg-primary/5">
           <CardContent className="p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
@@ -492,10 +496,59 @@ export default function Subscription() {
         </Card>
       )}
 
+      {/* ── Bannière abonnement EXPIRÉ / ANNULÉ ── */}
+      {activeSub && activeSub.status !== 'ACTIVE' && (
+        <Card className="mb-8 border-amber-300 bg-amber-50">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-amber-800">
+                  {lang === 'fr'
+                    ? `Votre abonnement ${t(activeSub.plan?.toLowerCase())} a ${activeSub.status === 'CANCELLED' ? 'été annulé' : 'expiré'}`
+                    : `Your ${t(activeSub.plan?.toLowerCase())} plan has ${activeSub.status === 'CANCELLED' ? 'been cancelled' : 'expired'}`}
+                </p>
+                {activeSub.endDate && (
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    {lang === 'fr' ? 'Depuis le' : 'Since'}{' '}
+                    {new Date(activeSub.endDate).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                className="flex-1 gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                onClick={() => {
+                  setSelectedPlan(activeSub.plan);
+                  setPaymentMethod('ORANGE_MONEY');
+                  setPhone('');
+                  setPhoneError('');
+                  setStep('payment');
+                }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                {lang === 'fr' ? 'Reconduire mon abonnement actuel' : 'Renew my current plan'}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 gap-2 border-amber-400 text-amber-700 hover:bg-amber-100"
+                onClick={() => plansRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              >
+                <LayoutGrid className="w-4 h-4" />
+                {lang === 'fr' ? 'Changer de plan' : 'Change plan'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Plan cards */}
-      <div className="grid md:grid-cols-3 gap-6">
+      <div ref={plansRef} className="grid md:grid-cols-3 gap-6">
         {plans.map((plan) => {
-          const isCurrentPlan = activeSub?.plan === plan.key;
+          const isCurrentPlan = activeSub?.status === 'ACTIVE' && activeSub?.plan === plan.key;
           const features = lang === 'fr' ? plan.features_fr : plan.features_en;
           return (
             <Card
@@ -560,6 +613,21 @@ export default function Subscription() {
           );
         })}
       </div>
+
+      {/* Bandeau "Déjà abonné ?" — visible uniquement si non connecté */}
+      {!isAuthenticated && (
+        <div className="mt-10 flex flex-col items-center gap-3 py-6 border-t">
+          <p className="text-sm text-muted-foreground">
+            {lang === 'fr' ? 'Vous avez déjà un abonnement ?' : 'Already have a subscription?'}
+          </p>
+          <Button variant="outline" className="gap-2" onClick={() => setLoginOpen(true)}>
+            <LogIn className="w-4 h-4" />
+            {lang === 'fr' ? 'Se connecter' : 'Log in'}
+          </Button>
+        </div>
+      )}
+
+      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
     </div>
   );
 }
